@@ -1,65 +1,70 @@
 package com.shiva.spark.elasticsearch.SparkToElasticSearch;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.VoidFunction;
+import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
-import org.apache.spark.sql.SQLContext;
+import org.apache.spark.sql.RuntimeConfig;
+import org.apache.spark.sql.SparkSession;
 import org.elasticsearch.spark.rdd.api.java.JavaEsSpark;
-import org.spark_project.guava.collect.ImmutableList;
-import org.spark_project.guava.collect.ImmutableMap;
+import org.springframework.stereotype.Service;
 
+@Service
 public class SparkToElasticSearch {
+	
+	final static String HOST = "localhost";
+    final static String PORT = "9200";
+    final static String INDEX = "spark_platform";
+    final static String INDEX_TYPE = INDEX + "/doc";
 	
 
 	public static void main(String[] args) {
-		//String mode = args[0];
-		//final String collection = args[1];
-		SparkConf sparkConf = new SparkConf();
-		sparkConf.set("es.nodes", "localhost");
-		sparkConf.setAppName("Spark to ElasticSearch");
-		sparkConf.setMaster("local[*]");
-		
-		SQLContext sqlContext;
-		
-		HashMap<String, String> options = new HashMap<String, String>();
-	    options.put("header", "true");
-	    options.put("path", "/Users/shivaa/git/SparkProcessorKinesis_git/src/main/resources/datamodel/streaming/inputs/randomData.csv");
-		
-		 //sqlContext = new SQLContext(new SparkContext("local[2]", "O"));
-		 //Dataset<Row> df = sqlContext.load("com.databricks.spark.csv", options);
-		 
-		 /*
-		 JavaRDD<Row> rdd = df.toJavaRDD();
-		
-		 Map<String,String> conf = new HashMap<String,String>();
-			conf.put("mapred.output.format.class", "org.elasticsearch.hadoop.mr.EsOutputFormat");
-			conf.put(ConfigurationOptions.ES_RESOURCE_WRITE, "test/hadoopDatasetSaveToEs");
-			conf.put("es.nodes", "localhost");
-			JavaEsSpark.saveToEs(rdd, "test/" + "sparkes");
-		 */
+		try {
 			
-			//SparkConf conf = ...
-					JavaSparkContext jsc = new JavaSparkContext(sparkConf);                              
+			String file = "/Users/shivaa/git/SparkProcessorKinesis_git/src/main/resources/datamodel/streaming/inputs/randomData.csv";
+			
+			
+			
+			  SparkSession spark = SparkSession.builder()
+					  .master("local[*]")
+					  .appName("Spark to ElasticSearch")
+					  
+					  .getOrCreate();
+			  
+			   RuntimeConfig sparkConf = spark.conf();
+				sparkConf.set("es.resource", INDEX_TYPE);
+		        sparkConf.set("es.query", "{\"query\":{\"match_all\":{}}}");
+		        sparkConf.set("es.nodes", HOST);
+		        sparkConf.set("es.port", PORT);
+			  
+			  Dataset<RowFieldsVO> ds = spark.read()
+					  .option("header", "false")
+					  .csv(file)
+					  .map(new MapFunction<Row, RowFieldsVO>() {
+				            private static final long serialVersionUID = 6349961442643649083L;
 
-					Map<String, ?> numbers = ImmutableMap.of("one", 1, "two", 2);                   
-					Map<String, ?> airports = ImmutableMap.of("OTP", "Otopeni", "SFO", "San Fran");
-
-					JavaRDD<Map<String, ?>> javaRDD = jsc.parallelize(ImmutableList.of(numbers, airports));
-					
-					javaRDD.foreach(new VoidFunction<Map<String,?>>() {
-						
-						public void call(Map<String, ?> arg0) throws Exception {
-							Indexer.indexSomeStuff();
-						}
-					});
-				//	JavaEsSpark.saveToEs(javaRDD, "spark/docs");  
+							@Override
+				            public RowFieldsVO call(Row value) throws Exception {
+								//System.out.println("value:"+ value.mkString(","));
+				                return new RowFieldsVO(Long.parseLong(value.getString(0)) * 1000, 
+				                		value.getString(1), 
+				                		value.getString(2)
+				                		, Integer.parseInt(value.getString(3)), 
+				                		value.getString(4), 
+				                		Integer.parseInt(value.getString(5))
+				                		);
+				            }
+					  }, Encoders.bean(RowFieldsVO.class));
+			   
+				JavaRDD<RowFieldsVO> rdd = ds.toJavaRDD();
+				
+				JavaEsSpark.saveToEs(rdd, INDEX_TYPE);
+				
+				
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 		 
 	}
 

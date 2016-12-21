@@ -9,24 +9,47 @@ import io.searchbox.client.JestClient;
 import io.searchbox.core.Bulk;
 import io.searchbox.core.Bulk.Builder;
 import io.searchbox.core.Index;
+import scala.Serializable;
 
 
 @Service
-public class Indexer {
+public class Indexer implements Serializable {
 
-	private static Indexer indexer;
-	private static JestClient client;
-	private static TweetService tweetService;
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 6920827364076475657L;
+	private Indexer indexer;
+	transient private JestClient client;
+	transient private  TweetService tweetService;
 	private static boolean isIntitialized = false;
+	transient 	Builder bulkBuilder;
 	
 	@Autowired 
 	public Indexer(JestClient client, TweetService tweetService) {
 		this.client = client;
 		this.tweetService = tweetService;
+		bulkBuilder = new Bulk.Builder();
+		
+		//initialize();
 	}
 	
-	public static void indexSomeStuff() throws Exception {
-		initialize();
+	public void addToBulk(RowFieldsVO row) throws Exception {
+		/*if (!isIntitialized) {
+			initialize();
+		}*/
+			Index index = new Index.Builder(row).index("platformMetric").type("events").build();
+			bulkBuilder.addAction(index);
+	
+	}
+	
+	public void indexRows() throws Exception {
+		client.execute(bulkBuilder.build());
+	}
+	
+	
+	public  void indexSomeStuff() throws Exception {
+		//initialize();
 		
 		Builder bulkBuilder = new Bulk.Builder();
 		
@@ -37,11 +60,11 @@ public class Indexer {
 		}
 		
 		client.execute(bulkBuilder.build());
-		
-
 	}
 	
-	public static void initialize() {
+	
+	
+	public  void initialize() {
 		if (!isIntitialized) {
 		
 		 @SuppressWarnings("resource")
